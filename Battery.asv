@@ -1,0 +1,7 @@
+function [soc, Pout] = Battery(soc_prev, P_batt)
+
+% Model obtained from WU
+delta = 
+if (P_batt >= 0)
+    soc = (1-
+    
