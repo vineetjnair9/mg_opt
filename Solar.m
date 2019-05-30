@@ -7,3 +7,4 @@ function [Ps] = Solar(eta_PV, A_c, I_PV)
 % TODO: Obtain actual I_PV values using GHI data from NASA/NREL (based on lat/lon of chosen location) 
 
 Ps = eta_PV * A_c * I_PV;
+end

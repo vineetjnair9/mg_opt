@@ -1,5 +1,7 @@
 function [soc, E_new] = Battery(soc_prev, Pb, E_init, delta_t)
 % Generalized battery model
+% TODO: Find more detailed/realistic models specific to the battery type used in final design (Pb-acid, Li-ion, NiCd, NiMH etc.)
+
 % P_batt is the power 'output' from the battery
 % E_init = Initial rated capacity/size of the battery storage (BS) system = Design variable (in Ah) 
 % TODO: Using dummy values for now, need to find correct battery parameters
@@ -32,5 +34,7 @@ else
     soc = (1-delta)*soc_prev - (Pb*delta_t)/(E_C*eta_d);
     E_new = E_C - (Pb/Pb_max)*E_C;
 end
+
+% TODO: Need to incorporate degradation costs of ES components 
 
 end
