@@ -1,4 +1,7 @@
-function [cost] = Objective_LI_DE_no_DR(x)
+function [cost] = Objective_LI_DE_no_DR_v2(x)
+% With modified strategy for excess demand scenario/case (elseif statement & not self-discharging twice in the same time-step)
+% Normalized LCOE
+
 % Function performs optimal dispatch to output overall weighted cost function that needs to be minimized
 % Variable inputs (that we minimize w.r.t) are: 
 % no. of solar PV arrays, no. of wind turbines, initial battery capacity (in kWh)
@@ -89,6 +92,7 @@ P_max_LI = 3.68; % Max continuous real power (kW), 5 kW peak
 delta_hour = delta/30.5; % Hourly self-discharge rate (%/h)
 eta_overall = 0.90; % Battery round trip coulombic efficiency (accounts for both charge & discharge) - from Hu et al. 2017
 cycles_LI = 0; % Keeps track of cumulative no. of charge/discharge cycles so far
+cycled = 0; % Keeps track of whether the BS has already been self-discharged in the current time step
 IC1_LI = 520; % Initial capital energy/capacity costs ($/kWh)
 IC2_LI = 120; % Initial capital power costs ($/kW) - source?
 IC_LI = IC1_LI * Eb_init + IC2_LI * P_max_LI; % Total initial capital costs for LI 
@@ -211,10 +215,12 @@ for t = 1:1:8760 % Simulate over one year with a time-step of 1 h
             if (P_RES(t) - P_load/eta_inv <= P_max_LI) 
                 P_b_LI(t) = -(P_RES(t) - P_load/eta_inv);
                 soc_LI(t+1) = soc_LI(t)*(1-delta_hour) - P_b_LI(t)*1000*delta_t*(eta_overall/E_C);
+                cycled = 1;
             else
                 P_b_LI(t) = -P_max_LI;
                 soc_LI(t+1) = soc_LI(t)*(1-delta_hour) - P_b_LI(t)*1000*delta_t*(eta_overall/E_C);
                 P_dump(t) = P_RES(t) - P_load/eta_inv - P_max_LI;
+                cycled = 1;
             end
         end
     else % Insufficient supply/generation
@@ -224,13 +230,16 @@ for t = 1:1:8760 % Simulate over one year with a time-step of 1 h
                 P_b_LI(t) = Excess_demand;
                 soc_LI(t+1) = soc_LI(t)*(1-delta_hour) - P_b_LI(t)*1000*delta_t*(eta_overall/E_C);
                 Excess_demand = 0; % All load has been met/satisfied
+                cycled = 1;
             else
                 P_b_LI(t) = P_max_LI;
                 soc_LI(t+1) = soc_LI(t)*(1-delta_hour) - P_b_LI(t)*1000*delta_t*(eta_overall/E_C);
                 Excess_demand = Excess_demand - P_max_LI;
+                cycled = 1;
             end
-        elseif (Excess_demand > 0) % Need to use backup DE to meet excess load
+        elseif (soc_LI(t) <= SOC_min_LI || Excess_demand > 0) % Need to use backup DE to meet excess load
             DE_ON(t) = 1; % Turn DE on
+            
             if (Excess_demand/eta_rec <= P_DE_rated)
                 if (Excess_demand/eta_rec >= P_DE_min)
                     P_DE(t) = Excess_demand/eta_rec;
@@ -241,11 +250,19 @@ for t = 1:1:8760 % Simulate over one year with a time-step of 1 h
                     % If we allow excess generator output to charge battery
                     if (soc_LI(t) < SOC_max_LI)
                         if (P_dump(t) <= P_max_LI)
-                            soc_LI(t+1) = max(SOC_min_LI,soc_LI(t+1))*(1-delta_hour) + P_dump(t)*delta_t*(eta_overall/E_C); 
+                            if (cycled == 0) % Battery hasn't been cycled/operated yet before in this time step
+                                soc_LI(t+1) = soc_LI(t)*(1-delta_hour) + P_dump(t)*delta_t*(eta_overall/E_C); 
+                            else % Battery has already been cycled so don't include self-discharge again
+                                soc_LI(t+1) = soc_LI(t+1) + P_dump(t)*delta_t*(eta_overall/E_C);
+                            end
                             P_dump(t) = 0;
                         else
-                           soc_LI(t+1) = max(SOC_min_LI,soc_LI(t+1))*(1-delta_hour) + P_max_LI*delta_t*(eta_overall/E_C); 
-                           P_dump(t) = P_dump(t) - P_max_LI;
+                            if (cycled == 0) % Battery hasn't been cycled/operated yet before in this time step
+                                soc_LI(t+1) = soc_LI(t)*(1-delta_hour) + P_max_LI*delta_t*(eta_overall/E_C); 
+                            else % Battery has already been cycled so don't include self-discharge again
+                                soc_LI(t+1) = soc_LI(t+1) + P_max_LI*delta_t*(eta_overall/E_C);
+                            end                           
+                            P_dump(t) = P_dump(t) - P_max_LI;
                         end
                     end
                 end
@@ -266,11 +283,13 @@ for t = 1:1:8760 % Simulate over one year with a time-step of 1 h
         end
     end
     
-    fuel_DE = 0.06 * P_DE_rated + 0.0246 * P_DE(t); % fuel consumption (L/h) where P is in kW - source?
+    fuel_DE = 0.06 * P_DE_rated + 0.0246 * P_DE(t); % fuel consumption (L/h) where P is in kW - Kaabeche and Ibtiouen 2014
     C_fuel_DE = C_fuel_DE + 3.20 * (fuel_DE / 3.78541); % Diesel fuel cost assuming a price of $3.20/US liquid gallon (value for Tanzania from NREL ReOpt)
     % Alternatively, can model assume fuel consumption cost to be quadratic function of DE power output (Parisio et al. 2014 and others)
     % But need to find right coefficients by data fitting
     CO2 = CO2 + 3.5 * fuel_DE; % Total CO2 emissions (kg) using emission factor of 3.5 kg/L of diesel - source?
+
+    cycled = 0; % Reset
 end
 
 if (DE_ON(1) == 1)
@@ -306,6 +325,24 @@ TAC = TNPC * CRF; % Total annualized cost ($)
 E_gen = sum(P_DE + P_RES); % Total annual electrical energy = P_gen * delta_t = P_gen (in kWh) since delta_t = 1 h
 LCOE = TAC/E_gen; % Energy cost/Levelized cost of electricity ($/kWh)
 
+% Base case for LCOE same as that for emissions - entire MG is run solely on a single DE 
+% Total annual recurring costs each year
+Var_OM_DE = Variable_OM_DE * 8760;
+fuel_DE = 8760 * 0.06 * P_DE_rated + 0.0246 * sum(sum(Load));
+C_fuel_DE = 3.20 * (fuel_DE / 3.78541);
+C_rec = Fixed_OM_DE + Var_OM_DE + C_fuel_DE;
+
+% Present worth of recurring costs 
+PW_rec = C_rec * (((1+f)/(1+i))*(((1+f)/(1+i))^t_overall - 1))/(((1+f)/(1+i)) - 1);
+
+% Present worth of non-recurring costs 
+PW_nonrec = PW_DE_rep;
+
+IC =  IC_DE + IC_inv;
+TNPC = IC + PW_rec + PW_nonrec; % Total (lifecycle) net present cost of system ($)
+TAC = TNPC * CRF; % Total annualized cost ($) 
+LCOE_base = TAC/sum(sum(Load)); % Energy cost/Levelized cost of electricity ($/kWh)
+
 % Emissions factors - EPA database (all in g)
 % Alternative source: Wu et al. 2014
 CO = 4.063288937 * sum(P_DE);
@@ -330,7 +367,7 @@ REF = sum(P_RES)/E_gen;
 % time = 1:1:8760;
 % plot(time, P_RES);
 
-Costs = [LCOE Emissions DPSP Dump -REF];
+Costs = [LCOE/LCOE_base Emissions DPSP Dump 1-REF];
 w = [0.2 0.2 0.2 0.2 0.2]; % Weights of different cost terms
 cost = Costs * w';
 
