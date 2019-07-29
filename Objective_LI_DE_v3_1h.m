@@ -1,6 +1,7 @@
-function [cost] = Objective_LI_DE_no_DR_v3(x)
-% With modified strategy for excess demand scenario/case - assume that DE is used only to meet excess load directly and cannot be used to charge battery storage!
-% Also normalized LCOE
+function [cost] = Objective_LI_DE_v3_1h(x)
+% With modified strategy for excess demand scenario/case
+% Assume DE is used only to meet excess load directly and can't be used to charge battery storage
+% Also normalized LCOE / emissions
 
 % Function performs optimal dispatch to output overall weighted cost function that needs to be minimized
 % Variable inputs (that we minimize w.r.t) are: 
@@ -32,8 +33,8 @@ DE_ON = zeros(1,8760); % Boolean variable to keep track of whether DE is online/
 P_lost = zeros(1,8760); 
 
 % COSTS
-i = 0.1; % Nominal interest/discount rate (from NREL LCOE explorer)
-f = 0.035; % Inflation/escalation rate (https://tradingeconomics.com/tanzania/inflation-cpi)
+i = 0.09; % Nominal interest/discount rate (https://tradingeconomics.com/kenya/interest-rate)
+f = 0.057; % Inflation/escalation rate (https://tradingeconomics.com/kenya/inflation-cpi)
 r = (i-f)/(1+f); % Real discount/interest rate
 t_overall = 25; % Overall system lifetime (y) = lifetime of solar (longest surviving components)
 CRF = (r*(1+r)^t_overall)/((1+r)^t_overall - 1); % Capital recovery factor
@@ -42,12 +43,8 @@ CRF = (r*(1+r)^t_overall)/((1+r)^t_overall - 1); % Capital recovery factor
 DE_startup = 0;
 DE_shutdown = 0;
 
-% Variable O&M costs of DE
-Var_OM_DE = 0;
-
 % Fuel costs
 C_fuel_DE = 0; 
-CO2 = 0; 
 
 % Fixed system parameters
 % SOLAR 
@@ -58,22 +55,22 @@ T_r = 25; % Standard test conditions (reference cell temperature)
 I_PV_NOCT = 0.8; % Hourly solar irradiance at NOCT - Normal/nominal operating cell temp (in kW/m^2) 
 T_c_NOCT = 45.7; % PV cell temp at NOCT (Celsius)
 T_a_NOCT = 20; % Ambient temp at NOCT (Celsius)
-beta_s = 0.0045; % Temp coefficient of module/generator efficiency (midway between the Pmax and Voc coefficients)
+beta_s = 0.0045; % Temp coefficient of module/generator efficiency (of Pmax)
 t_s = 25; % Lifetime of solar PV array (y)
 Ps_rated = 255; % Rated max power of each module (W)
 eta_pc = 1; % Power conditioning efficiency (= 1 or 100% since it's assumed that a perfect MPPT is used)
 Ps_rated_total = n_s * Ps_rated; % Total solar PV installed capacity in microgrid (W)
-IC_s = (Ps_rated_total/1000) * 1750; % Assuming installed PV costs of $1750/kW (source: IRENA costs report 2018, total installed costs)
+IC_s = (Ps_rated_total/1000) * 1210; % Assuming installed PV costs of $1210/kW (source: IRENA costs report 2018, total installed costs)
 OM_s = (1/100)*IC_s; % Fixed annual O&M costs ($/y) - from Kaabeche et al. 2011a
 
 % WIND
 beta_w = 1/7; % Typical value of power law exponent for open land
 % Use data from this spec sheet: https://farm-energy.extension.org/wp-content/uploads/2019/04/3.5kW_Spec_Sheet.pdf
-h_ref = 2; % Installation height of TAHMO measurement stations (m)
+h_ref = 1; % Installation height of TAHMO measurement stations (m) - wind speed measured approx. at sea level
 h_hub = 14.5; % Tower height to hub/nacelle (m)
 Pw_rated = 3.5; % Rated power of each WT (kW)
 Pw_rated_total = n_w * Pw_rated;
-IC_w = Pw_rated_total * 1500; % Assuming installed PV costs of $1500/kW (source: IRENA costs report 2018, total installed costs)
+IC_w = Pw_rated_total * 1500; % Global weighted average total installed costs of onshore wind ($/kW) - IRENA 2018
 OM_w = (3/100)*IC_w; % Fixed annual O&M costs ($/y)
 t_w = 20; % Lifetime of wind turbine system (y)
 v_c = 2.8; % Cut-in speed (m/s)
@@ -92,14 +89,15 @@ P_max_LI = 3.68; % Max continuous real power (kW), 5 kW peak
 delta_hour = delta/30.5; % Hourly self-discharge rate (%/h)
 eta_overall = 0.90; % Battery round trip coulombic efficiency (accounts for both charge & discharge) - from Hu et al. 2017
 cycles_LI = 0; % Keeps track of cumulative no. of charge/discharge cycles so far
-IC1_LI = 520; % Initial capital energy/capacity costs ($/kWh)
-IC2_LI = 120; % Initial capital power costs ($/kW) - source?
-IC_LI = IC1_LI * Eb_init + IC2_LI * P_max_LI; % Total initial capital costs for LI 
+% IC1_LI = 520; % Initial capital energy/capacity costs ($/kWh)
+% IC2_LI = 120; % Initial capital power costs ($/kW) - source?
+% IC_LI = IC1_LI * Eb_init + IC2_LI * P_max_LI; % Total initial capital costs for LI 
+IC_LI = 300 * Eb_init;
 OM_LI = (1/100) * IC_LI; % from Kaabeche et al. 2011a ($/y)
 RC_LI = 0.9*IC_LI; % Replacement cost at end of service period/lifetime
 Eb_init = Eb_init*3.6e6; % 1 W = 1 J/s
 E_C = Eb_init; % Actual capacity is initially at rated maximum (J)
-t_LI = 10; % Average lifetime of Li-ion battery (y) - Tesla powerwall warranty 
+t_LI = 15; % Average lifetime of Li-ion battery (y) - Tesla powerwall warranty 
 
 % Diesel generator specs from Moshi et al. 2016
 P_DE_rated = 16; % Rated maximum power of diesel generator (kW) = approx. peak load * 1.5
@@ -111,17 +109,17 @@ IC_DE = 12500; % Initial capital cost ($)
 RC_DE = 11000; % Replacement cost ($)
 Fixed_OM_DE = (2/100)*IC_DE; % Fixed O&M costs ($/y)
 Variable_OM_DE = 0.24; % Variable O&M costs ($/h of operation online)
-SUC_DE = 0.45; % Start-up cost ($/kW)
+SUC_DE = 0.45; % Start-up cost ($)
 SDC_DE = 0.23; % Shut-down cost ($)
-t_DE = 5; % Average lifetime of diesel engine (y) - source?
-% t_DE = 15000; % Lifetime (h), from Moshi et al. 2016
+% t_DE = 14; % Average lifetime of diesel engine (y) 
+t_DE = 15000; % Lifetime (h), from Moshi et al. 2016
 
 % Bidirectional inverter between AC and DC buses (can act as either rectifier or inverter)
 eta_inv = 0.9; % Inverter efficiency (Ogunjuyigbe et al. 2016)
 eta_rec = eta_inv; % Both rectifier and inverter assumed to have same parameters (Moshi et al. 2016)
-t_inv = 10; % Lifetime of converter 
+t_inv = 20; % Lifetime of converter 
 P_inv_rated = 16; % Maximum rated power of inverter (kW) - chosen to be same as that of backup generator
-IC_inv = 0.715 * P_inv_rated; % Assuming unit price of $0.715/W
+IC_inv = 2 * P_inv_rated * 1000; % Assuming unit price of $2/W
 % Assume converter has zero maintenance costs
 
 % Start with delta_t = 1 h and then maybe discretize over smaller time intervals
@@ -130,8 +128,7 @@ delta_t = 3600; % Calculation period (s) = 1 hour
 hour = 0; % Keeps track of the hour in the day
 
 % Normalize emissions wrt a base case where the DE is continuously run for the whole year at rated power - to meet all the load
-fuel_DE = 8760 * 0.06 * P_DE_rated + 0.0246 * sum(sum(Load));
-CO2 = 3.5 * fuel_DE;
+CO2 = 0.649 * sum(sum(Load));
 CO = 4.063288937 * sum(sum(Load));
 NOx = 18.85658039 * sum(sum(Load));
 SO2 = 0.007381439 * sum(sum(Load));
@@ -147,20 +144,19 @@ for t = 1:1:8760 % Simulate over one year with a time-step of 1 h
     
     Excess_demand = 0;
     
-    % SOLAR - How does Ps_rated affect these calculations?
+    % SOLAR 
     I = irradiance(t); % Hourly solar irradiance (kW/m^2)
     T_a = temp(t);
     eta_PV = eta_r * (1 - 0.9 * beta_s * (I/I_PV_NOCT) * (T_c_NOCT - T_a_NOCT) - beta_s * (T_a - T_r)); % Tazvinga et al. 2013
     % Alternative model - Kaabeche et al. 2011b
-    T_c = T_a + ((T_c_NOCT - 20)/0.8)*I; % Cell temp (C)
+    % T_c = T_a + ((T_c_NOCT - 20)/0.8)*I; % Cell temp (C)
     % eta_PV = eta_r * eta_pc * (1 - beta_s*(T_c - T_r));
-    % A_c = 1.625 * 1.019; % Surface area of 1 panel rated at 255 W (m^2)
     A_c = 120 * 78e-3 * 156e-3; % Surface area of 1 panel rated at 255 W (m^2)
     P_s(t) = n_s * eta_PV * A_c * I; % Solar power output (kW) 
     
-%     if (P_s(t) > Ps_rated_total)
-%         P_s(t) = Ps_rated_total;
-%     end
+    if (P_s(t) > Ps_rated_total)
+        P_s(t) = Ps_rated_total;
+    end
     
     % WIND
     v_ref = wind_speed(t);
@@ -234,18 +230,18 @@ for t = 1:1:8760 % Simulate over one year with a time-step of 1 h
             end
         elseif (soc_LI(t) <= SOC_min_LI || Excess_demand > 0) % Need to use backup DE to meet excess load
             DE_ON(t) = 1; % Turn DE on
-            
-            if (Excess_demand/eta_rec <= P_DE_rated)
-                if (Excess_demand/eta_rec >= P_DE_min)
-                    P_DE(t) = Excess_demand/eta_rec;
+            Excess_demand = Excess_demand * eta_inv; % AC
+            if (Excess_demand <= P_DE_rated)
+                if (Excess_demand >= P_DE_min)
+                    P_DE(t) = Excess_demand;
                     % No dumped load
                 else
                     P_DE(t) = P_DE_min;
-                    P_dump(t) = P_DE_min - Excess_demand/eta_rec;                
+                    P_dump(t) = (P_DE_min - Excess_demand) * eta_rec;                
                 end
             else
                 P_DE(t) = P_DE_rated;
-                P_lost(t) = Excess_demand/eta_rec - P_DE_rated;
+                P_lost(t) = Excess_demand - P_DE_rated;
             end
                         
             if (t ~= 1 && DE_ON(t-1) == 0) % i.e. DE was offline in the last/most recent time step
@@ -264,7 +260,8 @@ for t = 1:1:8760 % Simulate over one year with a time-step of 1 h
     C_fuel_DE = C_fuel_DE + 3.20 * (fuel_DE / 3.78541); % Diesel fuel cost assuming a price of $3.20/US liquid gallon (value for Tanzania from NREL ReOpt)
     % Alternatively, can model assume fuel consumption cost to be quadratic function of DE power output (Parisio et al. 2014 and others)
     % But need to find right coefficients by data fitting
-    CO2 = CO2 + 3.5 * fuel_DE; % Total CO2 emissions (kg) using emission factor of 3.5 kg/L of diesel - source?
+    % CO2 = CO2 + 3.5 * fuel_DE; % Total CO2 emissions (kg) using emission factor of 3.5 kg/L of diesel - source?
+    CO2 = CO2 + 0.649 * P_DE(t); % Usign emission coefficient of 0.649 kg/kWh - Wu et al. 2016
 end
 
 if (DE_ON(1) == 1)
@@ -279,7 +276,7 @@ Var_OM_DE = Variable_OM_DE * sum(DE_ON);
 IC = IC_s + IC_w + IC_LI + IC_DE + IC_inv;
 
 % Total annual recurring costs each year
-C_rec = OM_s + OM_w + OM_LI + Fixed_OM_DE + Var_OM_DE + C_fuel_DE;
+C_rec = OM_s + OM_w + OM_LI + Fixed_OM_DE + Var_OM_DE + C_fuel_DE + DE_startup + DE_shutdown;
 
 % Present worth of recurring costs 
 PW_rec = C_rec * (((1+f)/(1+i))*(((1+f)/(1+i))^t_overall - 1))/(((1+f)/(1+i)) - 1);
@@ -288,8 +285,13 @@ PW_rec = C_rec * (((1+f)/(1+i))*(((1+f)/(1+i))^t_overall - 1))/(((1+f)/(1+i)) - 
 i_adj_LI = (((1+i)^t_LI)/(1+f)^(t_LI - 1)) - 1; % Adjusted nominal interest rate
 PW_LI_rep = RC_LI * (((1+f)/(1+i_adj_LI))*(((1+f)/(1+i_adj_LI))^t_overall - 1))/(((1+f)/(1+i_adj_LI)) - 1);
     
-% DE replaced every 5 years
-i_adj_DE = (((1+i)^t_DE)/(1+f)^(t_DE - 1)) - 1; % Adjusted nominal interest rate
+% % DE replaced every 14 years
+% i_adj_DE = (((1+i)^t_DE)/(1+f)^(t_DE - 1)) - 1; % Adjusted nominal interest rate
+% PW_DE_rep = RC_DE * (((1+f)/(1+i_adj_DE))*(((1+f)/(1+i_adj_DE))^t_overall - 1))/(((1+f)/(1+i_adj_DE)) - 1);
+
+% Alternatively, determine frequency of DE replacement based on actual no. of operating hours per year
+t_DE_rep = (t_DE/sum(DE_ON)); % No. of years after which DE needs to be replaced
+i_adj_DE = (((1+i)^t_DE_rep)/(1+f)^(t_DE_rep - 1)) - 1; % Adjusted nominal interest rate
 PW_DE_rep = RC_DE * (((1+f)/(1+i_adj_DE))*(((1+f)/(1+i_adj_DE))^t_overall - 1))/(((1+f)/(1+i_adj_DE)) - 1);
 
 % Present worth of non-recurring costs 
@@ -297,15 +299,16 @@ PW_nonrec = PW_LI_rep + PW_DE_rep;
 
 TNPC = IC + PW_rec + PW_nonrec; % Total (lifecycle) net present cost of system ($)
 TAC = TNPC * CRF; % Total annualized cost ($) 
-E_gen = sum(P_DE + P_RES); % Total annual electrical energy = P_gen * delta_t = P_gen (in kWh) since delta_t = 1 h
-LCOE = TAC/E_gen; % Energy cost/Levelized cost of electricity ($/kWh)
+LCOE = TAC/sum(sum(Load)); % Energy cost/Levelized cost of electricity ($/kWh)
 
 % Base case for LCOE same as that for emissions - entire MG is run solely on a single DE 
 % Total annual recurring costs each year
 Var_OM_DE = Variable_OM_DE * 8760;
 fuel_DE = 8760 * 0.06 * P_DE_rated + 0.0246 * sum(sum(Load));
 C_fuel_DE = 3.20 * (fuel_DE / 3.78541);
-C_rec = Fixed_OM_DE + Var_OM_DE + C_fuel_DE;
+DE_startup = SUC_DE;
+DE_shutdown = SDC_DE;
+C_rec = Fixed_OM_DE + Var_OM_DE + C_fuel_DE + DE_startup + DE_shutdown;
 
 % Present worth of recurring costs 
 PW_rec = C_rec * (((1+f)/(1+i))*(((1+f)/(1+i))^t_overall - 1))/(((1+f)/(1+i)) - 1);
@@ -328,25 +331,19 @@ PM = 1.338208931 * sum(P_DE);
 PM10 = 1.338208931 * sum(P_DE);
 PM25 = 1.338208931 * sum(P_DE);
 Emissions = CO2 + (CO + NOx + SO2 + VOC + PM + PM10 + PM25)/1000;
-Emissions = Emissions/Emissions_base; % Always lies between 0 and 1
 
 % Reliability measure - % of load that's not not met
 DPSP = sum(P_lost)/sum(sum(Load));
 
 % Excess/dump energy as a fraction of total generation
+E_gen = sum(P_DE * eta_rec + P_RES); % Total annual DC electrical energy output = P_gen * delta_t = P_gen (in kWh) since delta_t = 1 h
 Dump = sum(P_dump)/E_gen;
 
 % Renewable penetration
 REF = sum(P_RES)/E_gen;
 
-% time = 1:1:8760;
-% plot(time, P_RES);
-
-Costs = [LCOE/LCOE_base Emissions DPSP Dump 1-REF];
+Costs = [LCOE/LCOE_base Emissions/Emissions_base DPSP Dump 1-REF];
 w = [0.2 0.2 0.2 0.2 0.2]; % Weights of different cost terms
-
-% Costs = [LCOE/LCOE_base Emissions DPSP];
-% w = [1/3 1/3 1/3]; % Weights of different cost terms
 
 cost = Costs * w';
 

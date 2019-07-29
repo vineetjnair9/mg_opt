@@ -10,7 +10,7 @@ Pb_max = 420; % Max rated power output limit of the battery (W) - Charging/disch
 
 eta_overall = 0.8; % Battery round trip efficiency (accounts for both charge & discharge)
 delta = 0.05; % Self-discharge rate of battery (%/month)
-E_C = E_init*(1- (cycles_LA*0.0214)/100); % Capacity fading with cycling -https://www.nrel.gov/docs/fy16osti/64987.pdf
+E_C = E_init*(1- (cycles_LA*0.0214)/100); % Capacity fading with cycling - https://www.nrel.gov/docs/fy16osti/64987.pdf
 soc = soc_prev*(1-delta) - P_b*delta_t*(eta_overall/E_C);
 % E_new = E_C - (Pb/Pb_max)*E_C;
 

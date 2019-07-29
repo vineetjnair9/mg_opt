@@ -50,19 +50,15 @@ b = [];
 Aeq = [];
 beq = [];
 
-x = zeros(80,3);
-fval = zeros(80,1);
-options = optimoptions('patternsearch', 'UseParallel', true);
+x = zeros(100,3);
+fval = zeros(100,3);
 
-for i = 1:1:80
+for i = 1:1:100
     x0 = lb + rand(size(lb)).*(ub - lb);
-    [x(i,:), fval(i,:)] = patternsearch(@Objective_LI_DE_v2_1h,x0,A,b,Aeq,beq,lb,ub,options);
-end
+    options = optimoptions('patternsearch', 'MeshTolerance', 1e-10, 'UseParallel', true);
+[x, fval] = patternsearch(@Objective_LI_DE_v2_1h,x0,A,b,Aeq,beq,lb,ub,options)
 
-[min_obj, index] = min(fval)
-x_opt = x(index,:)
 %% Genetic algorithm (GA) 
-
 
 %% PSO
 
