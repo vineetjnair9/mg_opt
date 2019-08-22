@@ -85,7 +85,8 @@ OM_LI = (1/100) * IC_LI; % from Kaabeche et al. 2011a ($/y)
 RC_LI = 0.9*IC_LI; % Replacement cost at end of service period/lifetime - assumed to be 90% of IC since new installation and permitting fees aren't incurred
 Eb_init = Eb_init*3.6e6; % 1 W = 1 J/s
 E_C = Eb_init; % Actual capacity is initially at rated maximum (J)
-t_LI = 15; % Average lifetime of Li-ion battery (y) - 5 years beyond Tesla powerwall warranty period
+%t_LI = 15; % Average lifetime of Li-ion battery (y) - 5 years beyond Tesla powerwall warranty period
+t_LI = 5475; % cycles
 
 % MT specs from https://www.energy.gov/sites/prod/files/2016/09/f33/CHP-Microturbines_0.pdf
 P_MT_rated = 16; % Rated maximum power of MT (kW) = approx. peak load * 1.5
@@ -94,7 +95,7 @@ Ramp = (P_MT_rated*1000)/10; % Max ramp rate of MT (W/min) - NERC disturbance co
 IC_MT = 3220 * P_MT_rated; % Initial capital cost - https://www.energy.gov/sites/prod/files/2016/09/f33/CHP-Microturbines_0.pdf
 RC_MT = 0.9*IC_MT; % Replacement cost ($)
 Fixed_OM_MT = (2/100)*IC_MT; % Fixed O&M costs ($/y)
-Variable_OM_MT = 0.013; % Variable O&M costs ($/kWh)
+Variable_OM_MT = 0.013; % Variable O&M costs ($/kWh) - https://www.energy.gov/sites/prod/files/2016/09/f33/CHP-Microturbines_0.pdf
 C_NG = 2.19; % Cost of natural gas in $/MMBtu - https://markets.businessinsider.com/commodities/natural-gas-price
 SUC_MT = 0.45; % Start-up cost ($) - assum similar startup/shutdown costs to MT
 SDC_MT = 0.23; % Shut-down cost ($)
@@ -105,7 +106,7 @@ eta_inv = 0.9; % Inverter efficiency (Ogunjuyigbe et al. 2016)
 eta_rec = eta_inv; % Both rectifier and inverter assumed to have same parameters (Moshi et al. 2016)
 t_inv = 20; % Lifetime of converter (y) - Moshi et al. 2016
 P_inv_rated = 16; % Maximum rated power of inverter (kW) - chosen to be larger than peak load (1.5x)
-IC_inv = 2 * P_inv_rated * 1000; % Assuming unit price of $2/W - https://www.nrel.gov/docs/fy19osti/72399.pdf
+IC_inv = 2800; % ($)
 
 % Start with delta_t = 1 h and then maybe discretize over smaller time intervals
 delta_t = 3600; % Calculation period (s) = 1 hour
@@ -114,13 +115,13 @@ hour = 0; % Keeps track of the hour in the day
 
 % Normalize emissions wrt a base case where the MT is continuously run for the whole year at rated power - to meet all the load
 CO2 = 0.631 * sum(sum(Load));
-CO = 2.851087583 * sum(P_MT);
-NOx = 20.88408858 * sum(P_MT);
-SO2 = 0.003009766 * sum(P_MT);
-VOC = 0.604000601  * sum(P_MT);
-PM = 0.046974355 * sum(P_MT);
-PM10 = 0.046974355 * sum(P_MT);
-PM25 = 0.046974355 * sum(P_MT);
+CO = 2.851087583 * sum(sum(Load));
+NOx = 20.88408858 * sum(sum(Load));
+SO2 = 0.003009766 * sum(sum(Load));
+VOC = 0.604000601  * sum(sum(Load));
+PM = 0.046974355 * sum(sum(Load));
+PM10 = 0.046974355 * sum(sum(Load));
+PM25 = 0.046974355 * sum(sum(Load));
 Emissions_base = CO2 + (CO + NOx + SO2 + VOC + PM + PM10 + PM25)/1000; % (kg)
 
 CO2 = 0;
@@ -276,7 +277,7 @@ if (MT_ON(1) == 1)
 end
 
 Var_OM_MT = Variable_OM_MT * sum(P_MT);
-fuel_MT = (0.84/61) * P_MT_rated * sum(MT_ON); % NG fuel consumption (MMBtu) 
+fuel_MT = (0.84/61) * sum(P_MT); % NG fuel consumption (MMBtu) 
 % assuming 0.84 MMTBtu/h of operation for a 61 kW MT
 C_fuel_MT = fuel_MT * C_NG;
 
@@ -289,7 +290,11 @@ C_rec = OM_s + OM_w + OM_LI + Fixed_OM_MT + Var_OM_MT + C_fuel_MT + MT_startup +
 % Present worth of recurring costs 
 PW_rec = C_rec * (((1+f)/(1+i))*(((1+f)/(1+i))^t_overall - 1))/(((1+f)/(1+i)) - 1);
 
-% Battery replaced every 1400 cycles
+% Battery replaced every 15 years
+% i_adj_LI = (((1+i)^t_LI)/(1+f)^(t_LI - 1)) - 1; % Adjusted nominal interest rate
+% PW_LI_rep = RC_LI * (((1+f)/(1+i_adj_LI))*(((1+f)/(1+i_adj_LI))^t_overall - 1))/(((1+f)/(1+i_adj_LI)) - 1);
+
+% Battery replaced every 5475 cycles
 t_rep_LI = cycles_LI/t_LI; % No. of years between battery replacements
 i_adj_LI = (((1+i)^t_rep_LI)/(1+f)^(t_rep_LI - 1)) - 1; % Adjusted nominal interest rate
 PW_LI_rep = RC_LI * (((1+f)/(1+i_adj_LI))*(((1+f)/(1+i_adj_LI))^t_overall - 1))/(((1+f)/(1+i_adj_LI)) - 1);
@@ -307,12 +312,12 @@ TAC = TNPC * CRF; % Total annualized cost ($)
 LCOE = TAC/sum(sum(Load)); % Energy cost/Levelized cost of electricity ($/kWh) = total annual costs / total load served
 
 % Base case for LCOE same as that for emissions - entire MG is run solely on a single MT
-% Total annual recurring costs each yeaR
-Var_OM_MT = Variable_OM_MT * 8760;
-C_fuel_MT = fuel_MT * (0.84/61) * P_MT_rated * 8760;
+% Total annual recurring costs each year
+Var_OM_MT = Variable_OM_MT * sum(sum(Load));
+C_fuel_MT = C_NG * (0.84/61) * sum(sum(Load));
 MT_startup = SUC_MT;
 MT_shutdown = SDC_MT;
-C_rec = Fixed_OM_mt + Var_OM_MT + C_fuel_MT + MT_startup + MT_shutdown;
+C_rec = Fixed_OM_MT + Var_OM_MT + C_fuel_MT + MT_startup + MT_shutdown;
 
 % Present worth of recurring costs 
 PW_rec = C_rec * (((1+f)/(1+i))*(((1+f)/(1+i))^t_overall - 1))/(((1+f)/(1+i)) - 1);
@@ -324,7 +329,7 @@ PW_MT_rep = RC_MT * (((1+f)/(1+i_adj_MT))*(((1+f)/(1+i_adj_MT))^t_overall - 1))/
 % Present worth of non-recurring costs 
 PW_nonrec = PW_MT_rep;
 
-IC =  IC_MT + IC_inv;
+IC =  IC_MT;
 TNPC = IC + PW_rec + PW_nonrec; % Total (lifecycle) net present cost of system ($)
 TAC = TNPC * CRF; % Total annualized cost ($) 
 LCOE_base = TAC/sum(sum(Load)); % Energy cost/Levelized cost of electricity ($/kWh)
@@ -349,7 +354,7 @@ Dump = sum(P_dump)/E_gen;
 % Renewable penetration
 REF = sum(P_RES)/E_gen;
 
-Costs = [LCOE/LCOE_base Emissions/Emissions_base DPSP Dump 1-REF];
+Costs = [LCOE/LCOE_base Emissions/Emissions_base DPSP Dump 1-REF]
 w = [0.2 0.2 0.2 0.2 0.2]; % Weights of different cost terms
 cost = Costs * w';
 

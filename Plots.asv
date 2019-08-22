@@ -85,55 +85,41 @@ hold off
 xlabel('Time of the year (in h)');
 ylabel('Power (in kW)')
 legend('P_{RES}','P_s','P_w','P_{LI}','P_{DE}','P_{load}','P_{dump}')
-set(gca,'FontSize',14);
 
 figure(2)
 plot(time, soc_LI(1:8760).*100);
 xlabel('Time of the year (in h)');
 ylabel('SOC of LI BS (in %)')
-set(gca,'FontSize',14);
 
 %% Actual dispatch with opt size - for one day / week / month
 
 x = [15.1187    4.3061  106.5333];
 [P_RES, P_s, P_w, P_b_LI, P_DE, Loads, P_dump, soc_LI] = Objective_LI_DE_v7_1h_dispatch(x);
 
-P_DE_rated = 16; % (kW)
-P_max_LI = 3.68; % (kW)
-
 t_end = 24;
 time = 1:1:t_end;
 
-lw = 1.25;
-
 figure(1)
-plot(time, P_RES(1:t_end),'LineWidth',lw);
+plot(time, P_RES(1:t_end));
 hold on
-plot(time, P_s(1:t_end),'LineWidth',lw);
-plot(time, P_w(1:t_end),'LineWidth',lw);
-plot(time, P_b_LI(1:t_end),'LineWidth',lw);
-plot(time, P_DE(1:t_end),'LineWidth',lw);
-plot(time, Loads(1:t_end),'--','LineWidth',lw);
-plot(time, P_dump(1:t_end),'--','LineWidth',lw);
-plot(time, P_max_LI.*ones(1,24),'c:','LineWidth',lw);
-plot(time, -P_max_LI.*ones(1,24),'c:','LineWidth',lw);
-plot(time, P_DE_rated.*ones(1,24),'m:','LineWidth',lw);
+plot(time, P_s(1:t_end));
+plot(time, P_w(1:t_end));
+plot(time, P_b_LI(1:t_end));
+plot(time, P_DE(1:t_end));
+plot(time, Loads(1:t_end));
+plot(time, P_dump(1:t_end));
 hold off
 xlabel('Time of the day (in h)');
 ylabel('Power (in kW)');
-legend({'P_{RES}','P_s','P_w','P_{LI}','P_{DE}','P_{load}','P_{dump}'},'Orientation','horizontal');
-set(gca,'FontSize',18);
-%set(gca,'DefaultLineLineWidth',5)
-xlim([1 t_end]);
+legend('P_{RES}','P_s','P_w','P_{LI}','P_{DE}','P_{load}','P_{dump}');
+xlim([0 t_end]);
 
 figure(2)
-plot(time, soc_LI(1:t_end).*100,'LineWidth',lw);
-xlabel('Time of the month (in h)');
+plot(time, soc_LI(1:t_end).*100);
+xlabel('Time of the day (in h)');
 ylabel('SOC of LI BS (in %)');
-xlim([1 t_end]);
+xlim([0 t_end]);
 ylim([0 100]);
-set(gca,'FontSize',18);
-%set(gca,'DefaultLineLineWidth',2)
 
 %% Sizing varying parameter plots
 % Varying DE rating
@@ -723,4 +709,4 @@ for i = 1:1:21
 end
 
 %plot(params,RES_sizing_avg);
-plot(params,BS_sizing_daily);
+plot(params,RES_sizing_avg);

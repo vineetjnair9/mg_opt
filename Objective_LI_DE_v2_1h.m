@@ -106,16 +106,17 @@ OM_LI = (1/100) * IC_LI; % from Kaabeche et al. 2011a ($/y)
 RC_LI = 0.9*IC_LI; % Replacement cost at end of service period/lifetime - assumed to be 90% of IC since new installation and permitting fees aren't incurred
 Eb_init = Eb_init*3.6e6; % 1 W = 1 J/s
 E_C = Eb_init; % Actual capacity is initially at rated maximum (J)
-t_LI = 15; % Average lifetime of Li-ion battery (y) - 5 years beyond Tesla powerwall warranty period
+%t_LI = 15; % Average lifetime of Li-ion battery (y) - 5 years beyond Tesla powerwall warranty period
+t_LI = 5475; % Average lifetime (cycles)
 
 % Diesel generator specs from Moshi et al. 2016
 P_DE_rated = 16; % Rated maximum power of diesel generator (kW) = approx. peak load * 1.5
-P_DE_min = 4.8; % Lower limit on power (kW) or k_gen * P_rated (k_gen = 0.3) from Fathima et al. 
+P_DE_min = 0.3*P_DE_rated; % Lower limit on power (kW) or k_gen * P_rated (k_gen = 0.3) from Fathima et al. 
 Ramp = (P_DE_rated*1000)/10; % Max ramp rate of DE (W/min) - NERC disturbance control standard, DG must be able to reach rated capacity within 10 min
 % Ramp_up =  0.006038 - 0.000003840*(P_DE_rated/10e3); % from ramp_rates.pdf (as % of nameplate capacity per minute)
 % Ramp_down = 0.006783 - 0.000004314*(P_DE_rated/10e3);
-IC_DE = 12500; % Initial capital cost for 16 kW rated DE ($) - slightly higher than replacement 
-RC_DE = 11000; % Replacement cost ($)
+IC_DE = (12500/16)*P_DE_rated; % Initial capital cost for 16 kW rated DE ($) - slightly higher than replacement 
+RC_DE = 0.88*IC_DE; % Replacement cost ($)
 Fixed_OM_DE = (2/100)*IC_DE; % Fixed O&M costs ($/y)
 Variable_OM_DE = 0.24; % Variable O&M costs ($/h of operation online)
 SUC_DE = 0.45; % Start-up cost ($)
@@ -127,8 +128,8 @@ t_DE = 15000; % Lifetime (h), from Moshi et al. 2016
 eta_inv = 0.9; % Inverter efficiency (Ogunjuyigbe et al. 2016)
 eta_rec = eta_inv; % Both rectifier and inverter assumed to have same parameters (Moshi et al. 2016)
 t_inv = 20; % Lifetime of converter (y) - Moshi et al. 2016
-P_inv_rated = 16; % Maximum rated power of inverter (kW) - chosen to be larger than peak load (1.5x)
-IC_inv = 2 * P_inv_rated * 1000; % Assuming unit price of $2/W - https://www.nrel.gov/docs/fy19osti/72399.pdf
+P_inv_rated = 12.52; % Maximum rated power of inverter (kW)
+IC_inv = 2800; % ($)
 % Assume converter has zero maintenance costs
 
 % Start with delta_t = 1 h and then maybe discretize over smaller time intervals
@@ -136,7 +137,7 @@ delta_t = 3600; % Calculation period (s) = 1 hour
 
 hour = 0; % Keeps track of the hour in the day
 
-% Normalize emissions wrt a base case where the DE is continuously run for the whole year at rated power - to meet all the load
+% Normalize emissions wrt a base case where the DE is continuously run for the whole year to meet all the load
 CO2 = 0.649 * sum(sum(Load));
 CO = 4.063288937 * sum(sum(Load));
 NOx = 18.85658039 * sum(sum(Load));
@@ -171,13 +172,15 @@ for t = 1:1:8760 % Simulate over one year with a time-step of 1 h
     v_ref = wind_speed(t);
     v_hub = v_ref * (h_hub/h_ref)^beta_w; % Wind speed at hub calculated from measured speed at reference anemometer height
     
-    % From Borhanazad et al. 2014: Optimization of micro-grid system using MOPSO
     if (v_hub < v_c || v_hub > v_f)
         P_w(t) = 0;
     elseif (v_c <= v_hub && v_hub <= v_r)
-        P_w(t) = n_w * Pw_rated * (A + B * v_hub + C * v_hub^2);
-        % Alternative formula
+        P_w(t) = n_w * Pw_rated * (A + B * v_hub + C * v_hub^2); % Source?
+        % Alternative formula - Borhanazad et al. 2014
         % Pw = ((v_hub^3)*P_rated - P_rated*v_cutin^3)/(v_rated^3 - v_cutin^3);
+        % Also include commonly known formula using Cp and swept area? 
+        % But need to know variation of Cp with TSR for my specific WT model
+       
     else
         P_w(t) = n_w * Pw_rated; % Wind power output (kW) - AC
     end
@@ -291,13 +294,13 @@ for t = 1:1:8760 % Simulate over one year with a time-step of 1 h
     end
     
     % Also need to account for (varying) DE efficiency while calculating its fuel consumption!    
-    fuel_DE = 0.06 * P_DE_rated + 0.0246 * P_DE(t); % fuel consumption (L/h) where P is in kW - Kaabeche and Ibtiouen 2014
+    fuel_DE = 0.08145 * P_DE_rated + 0.246 * P_DE(t); % fuel consumption (L/h) where P is in kW - Kaabeche and Ibtiouen 2014
     C_fuel_DE = C_fuel_DE + 3.20 * (fuel_DE / 3.78541); % Diesel fuel cost assuming a price of $3.20/US liquid gallon (value for east Africa from NREL ReOpt)
     % Alternatively, can model assume fuel consumption cost to be quadratic function of DE power output (Parisio et al. 2014 and others)
     % But need to find right coefficients by data fitting
     
     % CO2 = CO2 + 3.5 * fuel_DE; % Total CO2 emissions (kg) using emission factor of 3.5 kg/L of diesel - source?
-    CO2 = CO2 + 0.649 * P_DE(t); % Usign emission coefficient of 0.649 kg/kWh - Wu et al. 2016
+    CO2 = CO2 + 0.649 * P_DE(t); % Using emission coefficient of 0.649 kg/kWh - Wu et al. 2016
     cycled = 0; % Reset
 end
 
@@ -311,17 +314,21 @@ Var_OM_DE = Variable_OM_DE * sum(DE_ON);
 
 % Total initial capital/installed cost
 IC = IC_s + IC_w + IC_LI + IC_DE + IC_inv;
-
 % Total annual recurring costs each year
 C_rec = OM_s + OM_w + OM_LI + Fixed_OM_DE + Var_OM_DE + C_fuel_DE + DE_startup + DE_shutdown;
 
 % Present worth of recurring costs 
 PW_rec = C_rec * (((1+f)/(1+i))*(((1+f)/(1+i))^t_overall - 1))/(((1+f)/(1+i)) - 1);
 
-% Battery replaced every 10 years
-i_adj_LI = (((1+i)^t_LI)/(1+f)^(t_LI - 1)) - 1; % Adjusted nominal interest rate
+% Battery replaced every 15 years
+% i_adj_LI = (((1+i)^t_LI)/(1+f)^(t_LI - 1)) - 1; % Adjusted nominal interest rate
+% PW_LI_rep = RC_LI * (((1+f)/(1+i_adj_LI))*(((1+f)/(1+i_adj_LI))^t_overall - 1))/(((1+f)/(1+i_adj_LI)) - 1);
+
+% Alternatively, determine frequency of BS replacement based on actual no. of cycles
+t_LI_rep = (t_LI/cycles_LI);
+i_adj_LI = (((1+i)^t_LI_rep)/(1+f)^(t_LI_rep - 1)) - 1; % Adjusted nominal interest rate
 PW_LI_rep = RC_LI * (((1+f)/(1+i_adj_LI))*(((1+f)/(1+i_adj_LI))^t_overall - 1))/(((1+f)/(1+i_adj_LI)) - 1);
-    
+
 % % DE replaced every 14 years
 % i_adj_DE = (((1+i)^t_DE)/(1+f)^(t_DE - 1)) - 1; % Adjusted nominal interest rate
 % PW_DE_rep = RC_DE * (((1+f)/(1+i_adj_DE))*(((1+f)/(1+i_adj_DE))^t_overall - 1))/(((1+f)/(1+i_adj_DE)) - 1);
@@ -342,7 +349,7 @@ LCOE = TAC/sum(sum(Load)); % Energy cost/Levelized cost of electricity ($/kWh) =
 % Base case for LCOE same as that for emissions - entire MG is run solely on a single DE 
 % Total annual recurring costs each year
 Var_OM_DE = Variable_OM_DE * 8760;
-fuel_DE = 8760 * 0.06 * P_DE_rated + 0.0246 * sum(sum(Load));
+fuel_DE = 8760 * 0.08145 * P_DE_rated + 0.246 * sum(sum(Load));
 C_fuel_DE = 3.20 * (fuel_DE / 3.78541);
 DE_startup = SUC_DE;
 DE_shutdown = SDC_DE;
@@ -358,7 +365,7 @@ PW_DE_rep = RC_DE * (((1+f)/(1+i_adj_DE))*(((1+f)/(1+i_adj_DE))^t_overall - 1))/
 % Present worth of non-recurring costs 
 PW_nonrec = PW_DE_rep;
 
-IC =  IC_DE + IC_inv;
+IC = IC_DE; % Don't need inverter since DE can directly supply AC loads
 TNPC = IC + PW_rec + PW_nonrec; % Total (lifecycle) net present cost of system ($)
 TAC = TNPC * CRF; % Total annualized cost ($) 
 LCOE_base = TAC/sum(sum(Load)); % Energy cost/Levelized cost of electricity ($/kWh)
@@ -378,7 +385,9 @@ DPSP = sum(P_lost)/sum(sum(Load));
 
 % Excess/dump energy as a fraction of total generation
 E_gen = sum(P_DE * eta_rec + P_RES); % Total annual DC electrical energy output = P_gen * delta_t = P_gen (in kWh) since delta_t = 1 h
-Dump = sum(P_dump)/E_gen;
+Dump = sum(P_dump)/E_gen; 
+% Dump power ratio to total generation
+% OR relative excess power generated (= dump) ratio to total load
 
 % Renewable penetration
 REF = sum(P_RES)/E_gen;
@@ -389,5 +398,7 @@ REF = sum(P_RES)/E_gen;
 Costs = [LCOE/LCOE_base Emissions/Emissions_base DPSP Dump 1-REF];
 w = [0.2 0.2 0.2 0.2 0.2]; % Weights of different cost terms
 cost = Costs * w';
+DE_hours = sum(DE_ON);
+BS_cycles = sum(cycles_LI);
 
 end

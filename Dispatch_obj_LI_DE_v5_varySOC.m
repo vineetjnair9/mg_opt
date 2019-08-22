@@ -1,4 +1,4 @@
-function [cost, soc_LI, DPSP, P_dump, P_lost, P_load, P_w, P_s, P_RES] = Dispatch_obj_LI_DE(P_DE, P_b_LI)
+function [Costs, cost, soc_LI, DPSP, P_dump, P_lost, P_load, P_w, P_s, P_RES] = Dispatch_obj_LI_DE_v5_varySOC(P_DE, P_b_LI, SOC_initial)
 % Optimal dispatch of DE and BS on a day-ahead basis - Using inbuilt MATLAB solvers
 % Initial attempt: No MPC, static optimization over finite horizon based on certain/known historical load/climate data i.e. similar to LQR
 % But in reality, need some form of receding horizon MPC since controller doesn't have access to future climate/load data!
@@ -7,28 +7,34 @@ function [cost, soc_LI, DPSP, P_dump, P_lost, P_load, P_w, P_s, P_RES] = Dispatc
 % i.e. purpose of DE is only to serve as backup to meet excess load
 % P_DE and P_b_LI are 1x24 vectors
 
+% Vary over one week / 3 days instead of 1 day
+
 load('irradiance.mat'); % Solar insolation/irradiance (kW/m^2)
 load('temp.mat'); % Ambient air temperature (C)
 load('wind_speed.mat'); % (m/s)
-load('Load_day.mat'); % Hourly power (kW) demand profile for a single representative day
+load('Load_week.mat'); % Hourly power (kW) demand profile for a single representative day
 
 % Optimal sizing results using 5 equal weights - from v2
 % Oversize RES (round up n_s and n_w to nearest integer) and storage capacity        
+% Using DG = 16 kW
 n_s = 15.1187;
 n_w = 4.3061;
 Eb_init = 106.5333; % (kWh)
 
 % Discretize 1 day into 1 h time intervals 
 delta_t = 3600; % Calculation period (s) = 1 h
+hour = 0; % Keeps track of the hour in the day
 
-P_s = zeros(1,24); % (kW)
-P_w = zeros(1,24); % (kW)
-P_RES = zeros(1,24); % (kW)
-P_dump = zeros(1,24); % Excess power (RES output) sent to dump loads/ground (kW)
-soc_LI = zeros(1,25); 
-DE_ON = zeros(1,24); % Boolean variable to keep track of whether DE is online/committed
-P_lost = zeros(1,24); % Lost load (later -- DR)
-P_load = zeros(1,24);
+dim = 72; % 3 days
+
+P_s = zeros(1,dim); % (kW)
+P_w = zeros(1,dim); % (kW)
+P_RES = zeros(1,dim); % (kW)
+P_dump = zeros(1,dim); % Excess power (RES output) sent to dump loads/ground (kW)
+soc_LI = zeros(1,dim+1); 
+DE_ON = zeros(1,dim); % Boolean variable to keep track of whether DE is online/committed
+P_lost = zeros(1,dim); % Lost load AC
+P_load = zeros(1,dim);
 
 % Startup and shutdown costs of conventional generators
 DE_startup = 0;
@@ -83,12 +89,12 @@ Eb_init = Eb_init*3.6e6; % 1 W = 1 J/s
 E_C = Eb_init; % Actual capacity is initially at rated maximum (J)
 
 % Diesel generator specs from Moshi et al. 2016
-P_DE_rated = 16; % Rated maximum power of diesel generator (kW) = approx. peak load * 1.5
-P_DE_min = 4.8; % Lower limit on power (kW) or k_gen * P_rated (k_gen = 0.3) from Fathima et al. 
+P_DE_rated = 8; % Rated maximum power of diesel generator (kW) = approx. peak load * 1.5
+P_DE_min = 0.3*P_DE_rated; % Lower limit on power (kW) or k_gen * P_rated (k_gen = 0.3) from Fathima et al. 
 Ramp = (P_DE_rated*1000)/10; % Max ramp rate of DE (W/min) - NERC disturbance control standard 
 % Ramp_up =  0.006038 - 0.000003840*(P_DE_rated/10e3); % from ramp_rates.pdf (as % of nameplate capacity per minute)
 % Ramp_down = 0.006783 - 0.000004314*(P_DE_rated/10e3);
-IC_DE = 12500; % Initial capital cost ($)
+IC_DE = (12500/16)*P_DE_rated; % Initial capital cost ($)
 Fixed_OM_DE = (2/100)*(IC_DE/365); % Fixed daily O&M costs ($/d)
 Variable_OM_DE = 0.24; % Variable O&M costs ($/h of operation online)
 SUC_DE = 0.45; % Start-up cost ($/kW)
@@ -100,22 +106,11 @@ eta_rec = eta_inv; % Both rectifier and inverter assumed to have same parameters
 t_inv = 20; % Lifetime of converter 
 P_inv_rated = 16; % Maximum rated power of inverter (kW) - chosen to be same as that of backup generator
 
-P_load = Load_day;
-
 % Normalize emissions wrt a base case where the DE is continuously run for the whole day - to meet all the load
-CO2 = 0.649 * sum(P_load);
-CO = 4.063288937 * sum(P_load);
-NOx = 18.85658039 * sum(P_load);
-SO2 = 0.007381439 * sum(P_load);
-VOC = 1.502443664 * sum(P_load);
-PM = 1.338208931 * sum(P_load);
-PM10 = 1.338208931 * sum(P_load);
-PM25 = 1.338208931 * sum(P_load);
-Emissions_base = CO2 + (CO + NOx + SO2 + VOC + PM + PM10 + PM25)/1000; % (kg)
-  
+
 CO2 = 0;
     
-for t = 1:1:24
+for t = 1:1:dim
     % SOLAR
     I = irradiance(t); % Hourly solar irradiance (kW/m^2)
     T_a = temp(t);
@@ -143,7 +138,7 @@ for t = 1:1:24
     P_RES(t) = P_w(t)*eta_rec + P_s(t); % Total renewable power output available at DC bus (kW)
 
     if (t == 1)
-        soc_LI(t) = 0.9;
+        soc_LI(t) = SOC_initial;
     end
 
     if (t ~= 1 && soc_LI(t) == SOC_max_LI && soc_LI(t-1) < SOC_max_LI) % Complete 1 charge-discharge cycle
@@ -152,15 +147,14 @@ for t = 1:1:24
     end
 
     % Lower limit on P_DE or not
-    if (P_DE(t) >= 1e-4) % DE online during hour t (P_DE_min or 1e-4)
+    if (P_DE(t) >= P_DE_min) % DE online during hour t (P_DE_min or 1e-4)
         DE_ON(t) = 1;
     end
     
     % To enforce lower limit constraint on P_DE
-%     if (P_DE(t) < P_DE_min)
-%         P_DE(t) = 0;
-%         %DE_ON(t) = 0;
-%     end
+    if (P_DE(t) < P_DE_min)
+        P_DE(t) = 0;
+    end
 
     if (DE_ON(1) == 1)
         DE_startup = DE_startup + SUC_DE;
@@ -178,51 +172,43 @@ for t = 1:1:24
     C_fuel_DE = C_fuel_DE + 3.20 * (fuel_DE / 3.78541);
     CO2 = CO2 + 0.649 * P_DE(t);
 
+    day_number = ceil(t/24);
+    if (hour >= 24)
+        hour = 0;
+    end
+    hour = hour + 1;
+    P_load(t) = Load_week(day_number,hour); % (kW) - AC
+    
     % Battery dynamics
     % P_b_LI +ve -> Discharging
     % P_b_LI -ve -> Charging
     soc_LI(t+1) = soc_LI(t)*(1-delta_hour) - P_b_LI(t)*1000*delta_t*(eta_overall/E_C);
 
-    if (P_RES(t) == P_load(t)/eta_inv)
-        continue
-    elseif (P_RES(t) > P_load(t)/eta_inv) % Excess supply
-        % Need to rectify AC DE output before sending to DC bus for dump loads
-        % P_dump(t) = max(0, P_RES(t) + P_b_LI(t) + P_DE(t)*eta_rec - P_load(t)/eta_inv); % Sign of P_b_LI takes care of both charge/discharge cases
+    P_dump(t) = max(0, P_RES(t) + P_b_LI(t) + P_DE(t)*eta_rec - P_load(t)/eta_inv);
+    P_lost(t) = max(0, P_load(t) - (P_RES(t) + P_b_LI(t)) * eta_inv - P_DE(t));
     
-        P_dump(t) = P_RES(t) + P_b_LI(t) + P_DE(t)*eta_rec - P_load(t)/eta_inv;        
-        
-%         if (P_b_LI(t) >= 0) % Battery is discharged - Power output
-%             P_dump(t) = P_RES(t) + P_b_LI(t) + P_DE(t)*eta_rec - P_load(t)/eta_inv;
-%         else % Battery is charged - Power input
-%             P_dump(t) = P_RES(t) - abs(P_b_LI(t)) + P_DE(t)*eta_rec - P_load(t)/eta_inv;
-%         end
-    else % Excess demand
-        Excess_demand = P_load(t) - P_RES(t) * eta_inv;  
-%         P_lost(t) = max(0, Excess_demand - P_DE(t) - P_b_LI(t));
-%         P_dump(t) = max(0, (P_DE_min - Excess_demand) * eta_rec);
-        
-        P_lost(t) = Excess_demand - P_DE(t) - (P_b_LI(t) * eta_inv);
-        %P_dump(t) = (P_DE_min - Excess_demand) * eta_rec;
-        P_dump(t) = (P_DE_min - Excess_demand + (P_b_LI(t) * eta_inv)) * eta_rec;
-%         if (P_b_LI(t) >= 0) % Battery is discharged
-%             P_lost(t) = Excess_demand - P_DE(t)*eta_rec - P_b_LI(t);
-%             P_dump(t) = max(0, P_DE_min - Excess_demand/eta_rec);
-%         else % Battery is charged
-%             P_lost(t) = Excess_demand - P_DE(t)*eta_rec + abs(P_b_LI(t));
-%             P_dump(t) = max(0, P_DE_min - Excess_demand/eta_rec);            
-%         end            
-
-    end
-    
-    if (P_lost(t) < 0) 
-        P_lost(t) = 0;
-    end
-
-    if (P_dump(t) < 0) 
-        P_dump(t) = 0;
-    end
-   
+%     if (P_RES(t) == P_load(t)/eta_inv)
+%         continue
+%     elseif (P_RES(t) > P_load(t)/eta_inv) % Excess supply
+%         % Need to rectify AC DE output before sending to DC bus for dump loads
+%         P_dump(t) = max(0, P_RES(t) + P_b_LI(t) + P_DE(t)*eta_rec - P_load(t)/eta_inv); % Sign of P_b_LI takes care of both charge/discharge case
+%     else % Excess demand (AC)
+%         P_lost(t) = max(0, P_load(t) - (P_RES(t) + P_b_LI(t)) * eta_inv - P_DE(t));
+%         if (P_lost(t) == 0) 
+%             P_dump(t) = max(0, P_RES(t) + P_b_LI(t) + P_DE(t)*eta_rec - P_load(t)/eta_inv);
+%         end           
+%     end
 end
+
+CO2 = 0.649 * sum(P_load);
+CO = 4.063288937 * sum(P_load);
+NOx = 18.85658039 * sum(P_load);
+SO2 = 0.007381439 * sum(P_load);
+VOC = 1.502443664 * sum(P_load);
+PM = 1.338208931 * sum(P_load);
+PM10 = 1.338208931 * sum(P_load);
+PM25 = 1.338208931 * sum(P_load);
+Emissions_base = CO2 + (CO + NOx + SO2 + VOC + PM + PM10 + PM25)/1000; % (kg)
 
 CO = 4.063288937 * sum(P_DE);
 NOx = 18.85658039 * sum(P_DE);
@@ -236,11 +222,11 @@ Emissions = Emissions/Emissions_base; % Always lies between 0 and 1
 
 Var_OM_DE = Variable_OM_DE * sum(DE_ON);
 Cost = C_fuel_DE + Var_OM_DE + OM_s + OM_w + OM_LI + Fixed_OM_DE + DE_startup + DE_shutdown;
-E_gen = sum(P_DE .* eta_rec + P_RES);
+E_gen = sum(P_DE * eta_rec + P_RES);
 COE = Cost/sum(P_load); % Unit cost of electricity ($/kWh) - considering only real-time, operational costs
 
 % Base case for LCOE same as that for emissions - entire MG is run solely on a single DE 
-Var_OM_DE = Variable_OM_DE * 24;
+Var_OM_DE = Variable_OM_DE * dim;
 fuel_DE = 24 * 0.08145 * P_DE_rated + 0.246 * sum(P_load);
 C_fuel_DE = 3.20 * (fuel_DE / 3.78541);
 DE_startup = SUC_DE;
@@ -258,5 +244,3 @@ w = [0.25 0.25 0.25 0.25]; % Weights of different cost terms
 cost = Costs * w';
 
 end
-    
-  
