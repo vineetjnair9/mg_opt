@@ -6,7 +6,7 @@ P_DE = optimvar('P_DE', 24)';
 P_b_LI = optimvar('P_b_LI', 24)';
 
 % https://uk.mathworks.com/help/optim/ug/fcn2optimexpr.html
-[cost, Costs, soc_LI, DPSP, P_dump, P_lost, P_load, P_w, P_s, P_RES] = fcn2optimexpr(@Dispatch_obj_LI_DE_v3, P_DE, P_b_LI,'OutputSize',{[1,1],[1,25],[1,1],...
+[cost, soc_LI, DPSP, P_dump, P_lost, P_load, P_w, P_s, P_RES] = fcn2optimexpr(@Dispatch_obj_LI_DE_v3, P_DE, P_b_LI,'OutputSize',{[1,1],[1,25],[1,1],...
     [1,24],[1,24],[1,24],[1,24],[1,24],[1,24]});
 prob = optimproblem;
 

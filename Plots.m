@@ -8,60 +8,74 @@ P_b_LI = sol.P_b_LI;
 P_DE_rated = 8; % (kW)
 P_max_LI = 3.68; % (kW)
 
+lw = 1.25;
+
 t = 1:1:24;
 figure(1)
+plot(t,P_RES,'LineWidth',lw);
 hold on;
-plot(t, P_s);
-plot(t, P_w);
-plot(t, P_b_LI);
-plot(t, P_DE);
-plot(t, P_load);
-plot(t, P_lost,'--');
-plot(t, P_dump,'--');
+plot(t, P_s,'LineWidth',lw);
+plot(t, P_w,'LineWidth',lw);
+plot(t, P_b_LI,'LineWidth',lw);
+plot(t, P_DE,'LineWidth',lw);
+plot(t, P_load,'LineWidth',lw);
+plot(t, P_lost,'--','LineWidth',lw);
+plot(t, P_dump,'--','LineWidth',lw);
 % plot(t, P_max_LI.*ones(1,24),'c:','LineWidth',0.6);
 % plot(t, -P_max_LI.*ones(1,24),'c:','LineWidth',0.6);
 % plot(t, P_DE_rated.*ones(1,24),'m:','LineWidth',0.6);
-set(gca,'FontSize',13)
+set(gca,'FontSize',18);
 
 xlabel('Time of the day (in h)');
 ylabel('Power (in kW)');
-legend('P_s','P_w','P_{LI}','P_{DE}','P_{load}','P_{lost}','P_{dump}')
+legend({'P_{RES}','P_s','P_w','P_{LI}','P_{DE}','P_{load}','P_{lost}','P_{dump}'},'Orientation','horizontal');
+xlim([1 24]);
+%ylim([-2 25]);
+
+figure(2)
+plot(t, soc_LI(1:24).*100,'LineWidth',lw);
+xlabel('Time of the day (in h)');
+ylabel('SOC of LI BS (in %)')
+set(gca,'FontSize',18);
 xlim([1 24]);
 
-% figure(2)
-% plot(t, soc_LI(1:24).*100);
-% xlabel('Time of the day (in h)');
-% ylabel('SOC of LI BS (in %)')
-% xlim([1 24]);
-
-% figure(3) 
-% plot(t,P_s + P_w)
 %% Vary SOC plot
 
-[Costs, cost, soc_LI, DPSP, P_dump, P_lost, P_load, P_w, P_s, P_RES] = Dispatch_obj_LI_DE_v5_varySOC(P_DE_soc(1,:), P_LI_soc(1,:), 0.1);
+[Costs, cost, soc_LI, DPSP, P_dump, P_lost, P_load, P_w, P_s, P_RES] = Dispatch_obj_LI_DE_v5_varySOC(P_DE_soc(9,:), P_LI_soc(9,:), 0.9);
 
 P_DE_rated = 8; % (kW)
 P_max_LI = 3.68; % (kW)
 
-t = 1:1:24;
+lw = 1.25;
+
+t = 1:1:72;
 figure(1)
 hold on;
-plot(t, P_s);
-plot(t, P_w);
-plot(t, P_LI_soc(1,:));
-plot(t, P_DE_soc(1,:));
-plot(t, P_load);
-plot(t, P_lost,'--');
-plot(t, P_dump,'--');
+plot(t,P_RES,'LineWidth',lw);
+hold on;
+plot(t, P_s,'LineWidth',lw);
+plot(t, P_w,'LineWidth',lw);
+plot(t, P_LI_soc(9,:),'LineWidth',lw);
+plot(t, P_DE_soc(9,:),'LineWidth',lw);
+plot(t, P_load,'LineWidth',lw);
+plot(t, P_lost,'--','LineWidth',lw);
+plot(t, P_dump,'--','LineWidth',lw);
 % plot(t, P_max_LI.*ones(1,24),'c:','LineWidth',0.6);
 % plot(t, -P_max_LI.*ones(1,24),'c:','LineWidth',0.6);
 % plot(t, P_DE_rated.*ones(1,24),'m:','LineWidth',0.6);
-set(gca,'FontSize',13)
+set(gca,'FontSize',18);
 
 xlabel('Time of the day (in h)');
 ylabel('Power (in kW)');
-legend('P_s','P_w','P_{LI}','P_{DE}','P_{load}','P_{lost}','P_{dump}')
-xlim([1 24]);
+legend({'P_{RES}','P_s','P_w','P_{LI}','P_{DE}','P_{load}','P_{lost}','P_{dump}'},'Orientation','horizontal');
+xlim([1 72]);
+
+figure(2)
+plot(t, soc_LI(1:72).*100,'LineWidth',lw);
+xlabel('Time of the day (in h)');
+ylabel('SOC of LI BS (in %)')
+set(gca,'FontSize',18);
+xlim([1 72]);
 
 %% Actual dispatch with opt size - for whole year
 % Too noisy - may need to do some kind of smoothing/averaging
@@ -85,13 +99,13 @@ hold off
 xlabel('Time of the year (in h)');
 ylabel('Power (in kW)')
 legend('P_{RES}','P_s','P_w','P_{LI}','P_{DE}','P_{load}','P_{dump}')
-set(gca,'FontSize',14);
+set(gca,'FontSize',18);
 
 figure(2)
 plot(time, soc_LI(1:8760).*100);
 xlabel('Time of the year (in h)');
 ylabel('SOC of LI BS (in %)')
-set(gca,'FontSize',14);
+set(gca,'FontSize',18);
 
 %% Actual dispatch with opt size - for one day / week / month
 

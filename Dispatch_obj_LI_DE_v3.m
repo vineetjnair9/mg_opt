@@ -10,7 +10,7 @@ function [cost, soc_LI, DPSP, P_dump, P_lost, P_load, P_w, P_s, P_RES] = Dispatc
 load('irradiance.mat'); % Solar insolation/irradiance (kW/m^2)
 load('temp.mat'); % Ambient air temperature (C)
 load('wind_speed.mat'); % (m/s)
-load('Load_day.mat'); % Hourly power (kW) demand profile for a single representative day
+load('load_shift_curtail.mat'); % Hourly power (kW) demand profile for a single representative day
 
 % Optimal sizing results using 5 equal weights - from v2
 % Oversize RES (round up n_s and n_w to nearest integer) and storage capacity        
@@ -106,7 +106,7 @@ eta_rec = eta_inv; % Both rectifier and inverter assumed to have same parameters
 t_inv = 20; % Lifetime of converter 
 P_inv_rated = 16; % Maximum rated power of inverter (kW) - chosen to be same as that of backup generator
 
-P_load = load_peaky;
+P_load = load_shift_curtail;
 
 % Normalize emissions wrt a base case where the DE is continuously run for the whole day - to meet all the load
 CO2 = 0.649 * sum(P_load);
