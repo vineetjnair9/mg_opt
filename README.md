@@ -1,4 +1,4 @@
-# ET-Mphil
+# ET-MPhil
 
 If you use this code for your project - please include the following citation:
 
