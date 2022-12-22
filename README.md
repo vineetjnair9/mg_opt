@@ -2,7 +2,7 @@
 
 If you use this code for your project - please include the following citation:
 
-Vineet Jagadeesan Nair, "Optimal design and energy management of islanded, hybrid microgrids: For remote, isolated off-grid communities with no external power exchange." Master of Philosophy thesis, University of Cambridge (2019).
+Jagadeesan Nair, V. "Optimal Design & Energy Management of Islanded, Hybrid Microgrids For Remote, Isolated Off-Grid Communities with No External Power Exchange." Preprints 2022, 2022120416 (doi: 10.20944/preprints202212.0416.v1).
 
 Code for multiobjective optimization of hybrid islanded (off-grid) microgrids in sub-Saharan Africa. With renewables, battery storage, micro gas turbines and diesel generators. 
 
