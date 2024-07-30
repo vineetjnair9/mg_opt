@@ -748,13 +748,13 @@ x_p(22,3) = (mean(x_p(1:21,3))+mean(x_p(23:25,3)))/2;
 % min_y = min(x_p(:,2));
 % max_y = max(x_p(:,2));
 [xq,yq] = meshgrid(0:1:24,0:1:24);
+hold on
 vq = griddata(x_p(:,1),x_p(:,2),x_p(:,3),xq,yq);
 % mesh(xq,yq,vq); % 3d mesh plot
 % surf(xq,yq,vq); % 3d surface plot
 % contourf(xq,yq,vq) % 2d contour plot
 pcolor(xq,yq,vq) % gridded contour plot
-hold on
-scatter(x_p(:,1),x_p(:,2),40,'k','.')
+scatter(x_p(:,1),x_p(:,2),400,'k','.')
 a = colorbar;
 a.Label.String = 'BS capacity (kWh)';
 xlabel('PV capacity (kW)')
